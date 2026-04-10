@@ -37,6 +37,7 @@ from phalanx.audit import AuditLog, AuditEntry
 from phalanx.finops import CostGate, BudgetPolicy, BudgetExceededError, CostEvent
 from phalanx.compliance import generate_compliance_report, export_json, export_markdown
 from phalanx.otel import get_tracer, record_watch_event, record_policy_decision, meter_fleet_stats
+from phalanx.rego import rules_to_rego, export_rego, rules_from_md
 
 __all__ = [
     "ActionVerdict",

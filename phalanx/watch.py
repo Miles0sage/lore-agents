@@ -177,7 +177,7 @@ def _record_failure(
         "error_message": str(error)[:500],
         "traceback": traceback.format_exc()[-1000:],
     }
-    filename = f"{int(time.time() * 1000)}_{agent_id}.json"
+    filename = f"{time.time_ns()}_{agent_id}.json"
     (failures_dir / filename).write_text(json.dumps(record, indent=2))
 
 
@@ -198,7 +198,7 @@ def _record_block(
         "blocked_by": rule.get("pattern", ""),
         "type": "block",
     }
-    filename = f"{int(time.time() * 1000)}_{agent_id}_block.json"
+    filename = f"{time.time_ns()}_{agent_id}_block.json"
     (failures_dir / filename).write_text(json.dumps(record, indent=2))
 
 
@@ -219,5 +219,5 @@ def _record_injection(
         "confidence": confidence,
         "type": "injection",
     }
-    filename = f"{int(time.time() * 1000)}_{agent_id}_injection.json"
+    filename = f"{time.time_ns()}_{agent_id}_injection.json"
     (failures_dir / filename).write_text(json.dumps(record, indent=2))
