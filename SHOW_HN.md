@@ -8,7 +8,7 @@
 
 I built a Python library that wraps agent tools with a decorator. When a tool fails, the failure gets captured. Run `compile_rules()` and Darwin clusters similar failures into deny patterns. Every agent using `@watch` then blocks those patterns before execution — fleet-wide, automatically.
 
-Synthetic benchmark: 25 dangerous tool calls, 0 blocked before learning. After Darwin learned from 2 failures: 25/25 blocked, 0 recurrence. The loop is: fail → capture → cluster → rule → immunity.
+Synthetic benchmarks: recurrence rate 100% → 0% after Darwin learns from 2+ failures (25/25 dangerous calls blocked). False positive rate: 0% — 100 legitimate calls across 5 different tools, zero incorrectly blocked. The loop is: fail → capture → cluster → rule → immunity.
 
 ```python
 from phalanx import watch, compile_rules
