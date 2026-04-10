@@ -37,7 +37,7 @@ def _normalize_error_msg(msg: str) -> str:
     """Strip variable content (numbers, paths) to get the error template."""
     msg = re.sub(r'\b\d+\b', 'N', msg)           # 404 → N
     msg = re.sub(r'/[\w./\-]+', 'PATH', msg)     # /tmp/file.json → PATH
-    msg = re.sub(r'[0-9a-f]{8,}', 'HEX', msg)   # hex IDs → HEX
+    msg = re.sub(r'\b[0-9a-f]{8,64}\b', 'HEX', msg)  # hex IDs → HEX (bounded, no ReDoS)
     return msg.lower().strip()[:200]
 
 
@@ -306,6 +306,9 @@ class DarwinFailureCapture:
         Skips patterns that are too broad: those shorter than 10 characters
         (e.g. "tool:" or "a:") would match a large fraction of normal agent
         actions and act as an accidental wildcard block.
+
+        O(n) single-pass: zip the first action's segments against all others
+        rather than building a set per segment index.
         """
         if not actions:
             return []
@@ -318,20 +321,26 @@ class DarwinFailureCapture:
             candidate = actions[0] + ":"
             return [candidate] if len(candidate) >= 10 else []
 
-        # Find longest common prefix across all actions
+        # Single-pass O(n): use the first action as the reference and compare
+        # each subsequent action's segments against it, stopping at first mismatch.
+        reference = split_actions[0]
+        common_depth = len(reference)
+        for parts in split_actions[1:]:
+            # Walk segments pairwise until they diverge
+            depth = 0
+            for seg_a, seg_b in zip(reference, parts):
+                if seg_a == seg_b:
+                    depth += 1
+                else:
+                    break
+            common_depth = min(common_depth, depth)
+
         prefixes: list[str] = []
-        min_parts = min(len(parts) for parts in split_actions)
-
-        for i in range(min_parts):
-            segments = {parts[i] for parts in split_actions}
-            if len(segments) == 1:
-                prefix = ":".join(split_actions[0][:i + 1]) + ":"
-                prefixes = [prefix]  # Keep extending
-            else:
-                break
-
-        if not prefixes and split_actions:
-            # No common prefix — use most frequent first segment
+        if common_depth > 0:
+            prefix = ":".join(reference[:common_depth]) + ":"
+            prefixes = [prefix]
+        else:
+            # No common prefix — use most frequent first segment (single Counter pass)
             first_segments = [parts[0] for parts in split_actions]
             most_common = Counter(first_segments).most_common(1)
             if most_common:
