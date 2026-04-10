@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -30,6 +31,14 @@ from phalanx.governance.types import (
     IntentCategory,
     PolicyResult,
 )
+
+
+def _normalize_error_msg(msg: str) -> str:
+    """Strip variable content (numbers, paths) to get the error template."""
+    msg = re.sub(r'\b\d+\b', 'N', msg)           # 404 → N
+    msg = re.sub(r'/[\w./\-]+', 'PATH', msg)     # /tmp/file.json → PATH
+    msg = re.sub(r'[0-9a-f]{8,}', 'HEX', msg)   # hex IDs → HEX
+    return msg.lower().strip()[:200]
 
 
 @dataclass(frozen=True)
@@ -133,6 +142,7 @@ class DarwinFailureCapture:
         ctx: ExecutionContext,
         error_type: str = "policy_deny",
         intent: IntentCategory = IntentCategory.SAFE,
+        error_message: str = "",
     ) -> str:
         """Generate a deterministic hash for a failure root cause.
 
@@ -141,12 +151,14 @@ class DarwinFailureCapture:
         - execution ring at time of failure
         - error type classification
         - intent category
+        - normalized error message (strips variable content like numbers/paths)
         """
         components = [
             ctx.action.split(":")[0] if ":" in ctx.action else ctx.action,
             str(ctx.ring.value),
             error_type,
             intent.value,
+            _normalize_error_msg(error_message),
         ]
         raw = "|".join(components)
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -158,9 +170,10 @@ class DarwinFailureCapture:
         error_type: str = "policy_deny",
         intent: IntentCategory = IntentCategory.SAFE,
         metadata: dict[str, Any] | None = None,
+        error_message: str = "",
     ) -> FailureRecord:
         """Capture a failure event into the buffer."""
-        root_hash = self.generate_root_cause_hash(ctx, error_type, intent)
+        root_hash = self.generate_root_cause_hash(ctx, error_type, intent, error_message)
 
         # Hash params for deduplication (don't store raw params)
         params_str = str(sorted(ctx.params.items())) if ctx.params else ""
@@ -237,12 +250,22 @@ class DarwinFailureCapture:
 
         return new_clusters
 
-    def generate_rules(self, cluster: FailureCluster) -> list[LearnedRule]:
+    def generate_rules(
+        self,
+        cluster: FailureCluster,
+        min_confidence: float = 0.5,
+    ) -> list[LearnedRule]:
         """Generate learned rules from a failure cluster.
 
         Extracts action patterns from the cluster's sample actions
         and creates glob-based deny rules.
+
+        Only emits rules where cluster confidence >= min_confidence to
+        avoid generating rules from weak or noisy clusters.
         """
+        if cluster.confidence < min_confidence:
+            return []
+
         rules: list[LearnedRule] = []
 
         # Find common action prefixes
@@ -278,7 +301,12 @@ class DarwinFailureCapture:
         }
 
     def _extract_common_prefixes(self, actions: list[str]) -> list[str]:
-        """Extract common action prefixes for glob pattern generation."""
+        """Extract common action prefixes for glob pattern generation.
+
+        Skips patterns that are too broad: those shorter than 10 characters
+        (e.g. "tool:" or "a:") would match a large fraction of normal agent
+        actions and act as an accidental wildcard block.
+        """
         if not actions:
             return []
 
@@ -286,8 +314,9 @@ class DarwinFailureCapture:
         split_actions = [a.split(":") for a in actions]
 
         if len(split_actions) == 1:
-            # Single action — use first segment as prefix
-            return [split_actions[0][0] + ":"]
+            # Single action — use the full action as prefix
+            candidate = actions[0] + ":"
+            return [candidate] if len(candidate) >= 10 else []
 
         # Find longest common prefix across all actions
         prefixes: list[str] = []
@@ -308,4 +337,6 @@ class DarwinFailureCapture:
             if most_common:
                 prefixes = [most_common[0][0] + ":"]
 
-        return prefixes
+        # Filter out patterns that are too broad (< 10 chars would match too
+        # many normal actions, effectively a wildcard block on everything)
+        return [p for p in prefixes if len(p) >= 10]
