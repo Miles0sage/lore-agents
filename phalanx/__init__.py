@@ -21,6 +21,8 @@ from phalanx.governance.trust import TrustBridge, TrustDecayConfig
 from phalanx.governance.hypervisor import AgentHypervisor
 from phalanx.governance.sre import AgentSRE, ErrorBudgetConfig, SLOStatus
 from phalanx.governance.intent import IntentClassifier, IntentCategory
+from phalanx.evolution.darwin import DarwinFailureCapture, FailureCluster, LearnedRule
+from phalanx.evolution.propagator import CanaryPropagator, PropagationStatus
 
 __all__ = [
     "ActionVerdict",
@@ -40,4 +42,9 @@ __all__ = [
     "TrustBridge",
     "TrustDecayConfig",
     "TrustTier",
+    "DarwinFailureCapture",
+    "FailureCluster",
+    "LearnedRule",
+    "CanaryPropagator",
+    "PropagationStatus",
 ]
