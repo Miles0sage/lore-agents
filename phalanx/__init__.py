@@ -34,6 +34,7 @@ from phalanx.vigil_integration import (
 from phalanx.store import FailureStore
 from phalanx.injection import detect_injection, inject_canary, check_canary_leak
 from phalanx.audit import AuditLog, AuditEntry
+from phalanx.finops import CostGate, BudgetPolicy, BudgetExceededError, CostEvent
 
 __all__ = [
     "ActionVerdict",
@@ -64,4 +65,8 @@ __all__ = [
     "check_canary_leak",
     "AuditLog",
     "AuditEntry",
+    "BudgetExceededError",
+    "BudgetPolicy",
+    "CostEvent",
+    "CostGate",
 ]
