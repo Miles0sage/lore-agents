@@ -18,7 +18,9 @@ That's it. Your agent learns from its own mistakes.
 
 from __future__ import annotations
 
+import asyncio
 import functools
+import inspect
 import json
 import time
 import traceback
@@ -61,38 +63,54 @@ def watch(
     _dir = Path(failures_dir) if failures_dir else _DEFAULT_FAILURES_DIR
 
     def decorator(fn: F) -> F:
-        @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            action = f"tool:call:{fn.__name__}"
-            input_text = _extract_input(args, kwargs)
+        is_async = inspect.iscoroutinefunction(fn)
 
-            # Injection gate — run before rules and execution
+        def _pre_execute(action: str, input_text: str) -> None:
+            """Shared pre-execution gates (injection + rules). Raises WatchError if blocked."""
             if injection_gate:
                 from phalanx.injection import detect_injection
                 is_injection, confidence = detect_injection(input_text)
                 if is_injection:
                     _record_injection(_dir, agent_id, action, input_text, confidence)
                     raise WatchError(f"injection:confidence={confidence:.2f}", action)
-
-            # Check learned rules BEFORE execution
             if block_on_match:
                 for rule in _rules:
                     if _matches_rule(rule, action, input_text):
                         _record_block(_dir, agent_id, action, input_text, rule)
                         raise WatchError(rule["pattern"], action)
 
-            # Execute and capture failures
-            try:
-                result = fn(*args, **kwargs)
-                return result
-            except WatchError:
-                raise  # Don't capture our own blocks
-            except Exception as e:
-                _record_failure(_dir, agent_id, action, input_text, e)
-                raise
+        if is_async:
+            @functools.wraps(fn)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                action = f"tool:call:{fn.__name__}"
+                input_text = _extract_input(args, kwargs)
+                _pre_execute(action, input_text)
+                try:
+                    return await fn(*args, **kwargs)
+                except WatchError:
+                    raise
+                except Exception as e:
+                    _record_failure(_dir, agent_id, action, input_text, e)
+                    raise
 
-        wrapper._phalanx_agent_id = agent_id  # type: ignore
-        return wrapper  # type: ignore
+            async_wrapper._phalanx_agent_id = agent_id  # type: ignore
+            return async_wrapper  # type: ignore
+        else:
+            @functools.wraps(fn)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                action = f"tool:call:{fn.__name__}"
+                input_text = _extract_input(args, kwargs)
+                _pre_execute(action, input_text)
+                try:
+                    return fn(*args, **kwargs)
+                except WatchError:
+                    raise
+                except Exception as e:
+                    _record_failure(_dir, agent_id, action, input_text, e)
+                    raise
+
+            wrapper._phalanx_agent_id = agent_id  # type: ignore
+            return wrapper  # type: ignore
 
     return decorator
 
