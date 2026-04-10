@@ -36,6 +36,7 @@ from phalanx.injection import detect_injection, inject_canary, check_canary_leak
 from phalanx.audit import AuditLog, AuditEntry
 from phalanx.finops import CostGate, BudgetPolicy, BudgetExceededError, CostEvent
 from phalanx.compliance import generate_compliance_report, export_json, export_markdown
+from phalanx.otel import get_tracer, record_watch_event, record_policy_decision, meter_fleet_stats
 
 __all__ = [
     "ActionVerdict",
@@ -73,4 +74,8 @@ __all__ = [
     "generate_compliance_report",
     "export_json",
     "export_markdown",
+    "get_tracer",
+    "record_watch_event",
+    "record_policy_decision",
+    "meter_fleet_stats",
 ]
