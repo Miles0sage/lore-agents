@@ -23,6 +23,8 @@ from phalanx.governance.sre import AgentSRE, ErrorBudgetConfig, SLOStatus
 from phalanx.governance.intent import IntentClassifier, IntentCategory
 from phalanx.evolution.darwin import DarwinFailureCapture, FailureCluster, LearnedRule
 from phalanx.evolution.propagator import CanaryPropagator, PropagationStatus
+from phalanx.watch import watch, call as watch_call, WatchError
+from phalanx.compile import compile_rules
 
 __all__ = [
     "ActionVerdict",
