@@ -21,6 +21,17 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+try:
+    from phalanx.evolution.darwin import DarwinFailureCapture
+    from phalanx.governance.types import (
+        AgentIdentity,
+        ExecutionContext,
+        IntentCategory,
+    )
+    _DARWIN_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _DARWIN_AVAILABLE = False
+
 
 _DEFAULT_FAILURES_DIR = Path(".phalanx/failures")
 _DEFAULT_RULES_PATH = Path("SAFETY_RULES.md")
@@ -31,11 +42,22 @@ def compile_rules(
     failures_dir: Path | str | None = None,
     rules_path: Path | str | None = None,
     min_occurrences: int = _MIN_OCCURRENCES,
+    use_darwin: bool = True,
+    auto_pr: bool = False,
 ) -> list[dict[str, Any]]:
     """Compile failure logs into learned safety rules.
 
     Reads all failure JSON files, clusters by error pattern,
     and generates SAFETY_RULES.md with deny rules.
+
+    Args:
+        failures_dir: Directory containing failure JSON files.
+        rules_path: Path to write SAFETY_RULES.md.
+        min_occurrences: Minimum failures before generating a rule.
+        use_darwin: When True (default), use DarwinFailureCapture for
+            root-cause-hash clustering instead of keyword matching.
+            Falls back to keyword clustering if darwin import failed.
+        auto_pr: When True and new rules exist, open a GitHub PR via phalanx.pr.
 
     Returns the list of generated rules.
     """
@@ -51,7 +73,10 @@ def compile_rules(
         return []
 
     # Cluster by error signature
-    clusters = _cluster_failures(failures)
+    if use_darwin and _DARWIN_AVAILABLE:
+        clusters = _cluster_failures_darwin(failures)
+    else:
+        clusters = _cluster_failures(failures)
 
     # Generate rules from clusters meeting threshold
     rules = _generate_rules(clusters, min_occurrences)
@@ -74,6 +99,10 @@ def compile_rules(
     if new_rules:
         _write_rules(rpath, new_rules, existing)
 
+    if auto_pr and new_rules:
+        from phalanx.pr import open_rule_pr  # lazy import to avoid circular deps
+        open_rule_pr(new_rules, rules_path=rpath)
+
     return new_rules
 
 
@@ -90,6 +119,75 @@ def _load_failures(failures_dir: Path) -> list[dict[str, Any]]:
         except (json.JSONDecodeError, OSError):
             continue
     return failures
+
+
+def _cluster_failures_darwin(
+    failures: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Cluster failures using DarwinFailureCapture (root cause hashing).
+
+    Creates an ExecutionContext from each failure JSON record, feeds them
+    into DarwinFailureCapture.capture(), then calls analyze() to get
+    FailureCluster objects grouped by root_cause_hash.
+
+    Returns the same ``{sig: [failure_records]}`` dict that
+    _generate_rules() expects, where sig = cluster.root_cause_hash.
+    """
+    darwin = DarwinFailureCapture(
+        min_cluster_size=2,          # Match _MIN_OCCURRENCES default
+        cluster_window_seconds=86400.0,  # 24 h — cover offline batch runs
+    )
+
+    # Build a map from root_cause_hash → original JSON records so we can
+    # return the raw dicts (not FailureRecord objects) to _generate_rules().
+    hash_to_failures: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for failure in failures:
+        agent_id = failure.get("agent_id", "unknown")
+        action = failure.get("action", failure.get("error_type", "unknown"))
+        error_type = failure.get("error_type", "policy_deny")
+
+        identity = AgentIdentity(
+            agent_id=agent_id,
+            name=agent_id,
+            sponsor="compile",
+            trust_score=0,
+        )
+        ctx = ExecutionContext(
+            agent=identity,
+            action=action,
+            params={},
+        )
+
+        record = darwin.capture(
+            ctx,
+            result=None,
+            error_type=error_type,
+            intent=IntentCategory.SAFE,
+        )
+        hash_to_failures[record.root_cause_hash].append(failure)
+
+    clusters = darwin.analyze()
+
+    # Build result keyed by an _error_signature-compatible string so that
+    # _extract_pattern() (called by _generate_rules) can derive the same
+    # keyword-based DENY pattern it would produce from keyword clustering.
+    # Using "{error_type}:{keyword}" keeps full compatibility with dedup logic.
+    result: dict[str, list[dict[str, Any]]] = {}
+    for cluster in clusters:
+        rch = cluster.root_cause_hash
+        if rch not in hash_to_failures:
+            continue
+        cluster_failures = hash_to_failures[rch]
+        # Derive a stable sig from the representative (first) failure record
+        rep = cluster_failures[0]
+        sig = _error_signature(
+            rep.get("error_type", "Unknown"),
+            rep.get("error_message", ""),
+        )
+        result[sig] = cluster_failures
+
+    return result
 
 
 def _cluster_failures(
