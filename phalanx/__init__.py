@@ -31,6 +31,9 @@ from phalanx.vigil_integration import (
     RulesCompiler,
     make_vigil_notifier,
 )
+from phalanx.store import FailureStore
+from phalanx.injection import detect_injection, inject_canary, check_canary_leak
+from phalanx.audit import AuditLog, AuditEntry
 
 __all__ = [
     "ActionVerdict",
@@ -55,4 +58,10 @@ __all__ = [
     "LearnedRule",
     "CanaryPropagator",
     "PropagationStatus",
+    "FailureStore",
+    "detect_injection",
+    "inject_canary",
+    "check_canary_leak",
+    "AuditLog",
+    "AuditEntry",
 ]
