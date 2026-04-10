@@ -25,6 +25,12 @@ from phalanx.evolution.darwin import DarwinFailureCapture, FailureCluster, Learn
 from phalanx.evolution.propagator import CanaryPropagator, PropagationStatus
 from phalanx.watch import watch, call as watch_call, WatchError
 from phalanx.compile import compile_rules
+from phalanx.vigil_integration import (
+    wrap_vigil_tools,
+    WatchedBreaker,
+    RulesCompiler,
+    make_vigil_notifier,
+)
 
 __all__ = [
     "ActionVerdict",
