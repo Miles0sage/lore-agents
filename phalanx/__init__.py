@@ -19,15 +19,22 @@ from phalanx.governance.policy import BasePolicy, StaticPolicy
 from phalanx.governance.kernel import StatelessKernel
 from phalanx.governance.trust import TrustBridge, TrustDecayConfig
 from phalanx.governance.hypervisor import AgentHypervisor
+from phalanx.governance.sre import AgentSRE, ErrorBudgetConfig, SLOStatus
+from phalanx.governance.intent import IntentClassifier, IntentCategory
 
 __all__ = [
     "ActionVerdict",
     "AgentIdentity",
     "AgentHypervisor",
+    "AgentSRE",
     "BasePolicy",
+    "ErrorBudgetConfig",
     "ExecutionContext",
     "ExecutionRing",
+    "IntentCategory",
+    "IntentClassifier",
     "PolicyResult",
+    "SLOStatus",
     "StatelessKernel",
     "StaticPolicy",
     "TrustBridge",
