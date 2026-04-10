@@ -44,6 +44,8 @@ def compile_rules(
     min_occurrences: int = _MIN_OCCURRENCES,
     use_darwin: bool = True,
     auto_pr: bool = False,
+    output: str = "markdown",
+    rego_path: Path | str | None = None,
 ) -> list[dict[str, Any]]:
     """Compile failure logs into learned safety rules.
 
@@ -58,6 +60,10 @@ def compile_rules(
             root-cause-hash clustering instead of keyword matching.
             Falls back to keyword clustering if darwin import failed.
         auto_pr: When True and new rules exist, open a GitHub PR via phalanx.pr.
+        output: Output format — "markdown" (default) writes SAFETY_RULES.md;
+            "rego" additionally writes an OPA/Rego policy file.
+        rego_path: Destination for the Rego file when output="rego".
+            Defaults to rules_path with a .rego extension.
 
     Returns the list of generated rules.
     """
@@ -98,6 +104,11 @@ def compile_rules(
 
     if new_rules:
         _write_rules(rpath, new_rules, existing)
+
+    if output == "rego":
+        from phalanx.rego import export_rego  # lazy import
+        _rego_path = Path(rego_path) if rego_path else rpath.with_suffix(".rego")
+        export_rego(rules, _rego_path)
 
     if auto_pr and new_rules:
         from phalanx.pr import open_rule_pr  # lazy import to avoid circular deps

@@ -35,6 +35,7 @@ from phalanx.store import FailureStore
 from phalanx.injection import detect_injection, inject_canary, check_canary_leak
 from phalanx.audit import AuditLog, AuditEntry
 from phalanx.finops import CostGate, BudgetPolicy, BudgetExceededError, CostEvent
+from phalanx.compliance import generate_compliance_report, export_json, export_markdown
 
 __all__ = [
     "ActionVerdict",
@@ -69,4 +70,7 @@ __all__ = [
     "BudgetPolicy",
     "CostEvent",
     "CostGate",
+    "generate_compliance_report",
+    "export_json",
+    "export_markdown",
 ]

@@ -44,6 +44,7 @@ def watch(
     rules_path: Path | str | None = None,
     failures_dir: Path | str | None = None,
     block_on_match: bool = True,
+    injection_gate: bool = True,
 ) -> Callable[[F], F]:
     """Decorator that watches a function for failures and enforces learned rules.
 
@@ -64,6 +65,14 @@ def watch(
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             action = f"tool:call:{fn.__name__}"
             input_text = _extract_input(args, kwargs)
+
+            # Injection gate — run before rules and execution
+            if injection_gate:
+                from phalanx.injection import detect_injection
+                is_injection, confidence = detect_injection(input_text)
+                if is_injection:
+                    _record_injection(_dir, agent_id, action, input_text, confidence)
+                    raise WatchError(f"injection:confidence={confidence:.2f}", action)
 
             # Check learned rules BEFORE execution
             if block_on_match:
@@ -172,4 +181,25 @@ def _record_block(
         "type": "block",
     }
     filename = f"{int(time.time() * 1000)}_{agent_id}_block.json"
+    (failures_dir / filename).write_text(json.dumps(record, indent=2))
+
+
+def _record_injection(
+    failures_dir: Path,
+    agent_id: str,
+    action: str,
+    input_text: str,
+    confidence: float,
+) -> None:
+    """Record a detected injection attempt."""
+    failures_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": time.time(),
+        "agent_id": agent_id,
+        "action": action,
+        "input_preview": input_text[:500],
+        "confidence": confidence,
+        "type": "injection",
+    }
+    filename = f"{int(time.time() * 1000)}_{agent_id}_injection.json"
     (failures_dir / filename).write_text(json.dumps(record, indent=2))
